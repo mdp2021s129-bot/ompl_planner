@@ -1,0 +1,115 @@
+syntax = "proto3";
+
+package pathserver;
+
+import "google/protobuf/wrappers.proto";
+
+service PathServer {
+  /**
+   * Plan a new path.
+   *
+   * Fails if the start and / or end state are invalid.
+   *
+   * Fails if no path could be found.
+   */
+  rpc Plan(PlanRequest) returns (PlanReply) {}
+
+  /**
+   * Checks if a given state is valid.
+   */
+  rpc IsValid(State) returns (google.protobuf.BoolValue) {}
+}
+
+/**
+ * Message specifying the robot's state.
+ */
+message State {
+  /**
+   * x-coordinate of the robot.
+   */
+  double x = 1;
+  /**
+   * y-coordinate of the robot.
+   */
+  double y = 2;
+  /**
+   * orientation of the robot.
+   *
+   * In radians. Measured counter-clockwise from the x-axis.
+   */
+  double theta = 3;
+}
+
+message PlanRequest {
+  /**
+   * Message specifying an obstacle's position.
+   */
+  message Obstacle {
+    /**
+     * x grid-position of obstacle.
+     */
+    int32 x = 1;
+    /**
+     * y grid-position of obstacle.
+     */
+    int32 y = 2;
+  }
+
+  /**
+   * Obstacles to avoid.
+   */
+  repeated Obstacle obstacles = 1;
+  /**
+   * Current state.
+   */
+  State current = 2;
+  /**
+   * Target state.
+   */
+  State target = 3;
+}
+
+/**
+ * Message containing the planning result.
+ */
+message PlanReply {
+  /**
+   * Message represnting a single move to be executed by the robot.
+   */
+  message Move {
+    /**
+     * Direction that the move should proceed in.
+     */
+    enum Direction {
+      LEFT = 0;     // Turning centre on the left.
+      STRAIGHT = 1; // No turning centre.
+      RIGHT = 2;    // Turning centre on the right.
+    }
+    Direction direction = 1;
+
+    /**
+     * Distance that the move should be executed for.
+     *
+     * In units of metres. A negative distance does not imply that a
+     * left turn should switch to a right turn. It only indicates that
+     * the robot should reverse.
+     */
+    double distance = 2;
+  }
+
+  /**
+   * Series of moves that bring the robot from the initial state to the
+   * target state without impacting any obstacles.
+   */
+  repeated Move moves = 1;
+
+  /**
+   * Series of intermediate robot states (waypoints) that were generated
+   * by the planner.
+   *
+   * The first state is the initial one, and the last state is the goal state
+   * reached by the planner. The last state should be checked for goal
+   * tolerance satisfaction.
+   */
+  repeated State waypoints = 2;
+}
