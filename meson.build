@@ -1,12 +1,13 @@
 project('ompl', 'cpp',
   version : '0.1',
   default_options : ['warning_level=3',
-                     'cpp_std=c++20', 'buildtype=debug'])
+                     'cpp_std=c++17', 'buildtype=debug'])
 
 fs = import('fs')
 
 ompl = dependency('ompl', method: 'cmake')
 grpc = dependency('grpc++')
+eigen = dependency('eigen3')
 protobuf = dependency('protobuf')
 
 protoc = find_program('protoc')
@@ -26,6 +27,6 @@ grpc_generated = custom_target(
 )
 
 exe = executable('ompl', ['ompl.cpp', 'collision.cpp', grpc_generated[1], grpc_generated[3]],
-  install: true, dependencies: [ompl, grpc, protobuf])
+  install: true, dependencies: [ompl, grpc, protobuf, eigen])
 
 test('basic', exe)
