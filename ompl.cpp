@@ -43,6 +43,7 @@
 #include <ompl/base/spaces/DubinsStateSpace.h>
 #include <ompl/base/spaces/ReedsSheppStateSpace.h>
 #include <ompl/geometric/SimpleSetup.h>
+#include <ompl/geometric/planners/rrt/RRTXstatic.h>
 #include <ompl/geometric/planners/rrt/RRTstar.h>
 #include <pathserver.grpc.pb.h>
 #include <cmath>
@@ -176,8 +177,8 @@ class PathServerImpl final : public pathserver::PathServer::Service {
     ss.setStartAndGoalStates(start, goal);
 
     // Verify that start and goal states are valid states.
-    if ((!ss.getStateValidityChecker()->isValid(start)) ||
-        !ss.getStateValidityChecker()->isValie(end))
+    if ((!ss.getStateValidityChecker()->isValid(start.get())) ||
+        (!ss.getStateValidityChecker()->isValid(goal.get())))
       return grpc::Status{grpc::StatusCode::INVALID_ARGUMENT,
                           "start and / or end state(s) invalid"};
 
@@ -185,8 +186,8 @@ class PathServerImpl final : public pathserver::PathServer::Service {
     ss.getSpaceInformation()->setStateValidityCheckingResolution(0.005);
     ss.setup();
 
-    // Attempt to solve within 2s.
-    ob::PlannerStatus solved = ss.solve(2);
+    // Attempt to solve within 3s.
+    ob::PlannerStatus solved = ss.solve(3);
 
     // If an approximate or exact solution is achieved.
     if (solved) {
