@@ -175,6 +175,12 @@ class PathServerImpl final : public pathserver::PathServer::Service {
     goal[2] = request->target().theta();
     ss.setStartAndGoalStates(start, goal);
 
+    // Verify that start and goal states are valid states.
+    if ((!ss.getStateValidityChecker()->isValid(start)) ||
+        !ss.getStateValidityChecker()->isValie(end))
+      return grpc::Status{grpc::StatusCode::INVALID_ARGUMENT,
+                          "start and / or end state(s) invalid"};
+
     // State check at .5% resolution.
     ss.getSpaceInformation()->setStateValidityCheckingResolution(0.005);
     ss.setup();
@@ -184,8 +190,16 @@ class PathServerImpl final : public pathserver::PathServer::Service {
 
     // If an approximate or exact solution is achieved.
     if (solved) {
-      // Use one second to simplify the solution.
-      ss.simplifySolution(1.0);
+      // Check the solution cost. The RRT* planner can returl solutions with
+      // infinite cost.
+      auto cost =
+          ss.getSolutionPath().cost(ss.getOptimizationObjective()).value();
+      if (std::fpclassify(cost) == FP_INFINITE)
+        return grpc::Status{grpc::StatusCode::DEADLINE_EXCEEDED,
+                            "solution cost not finite after planning time"};
+
+      // Use one second to simplify the solution
+      ss.simplifySolution(1);
       og::PathGeometric path = ss.getSolutionPath();
 
       // Not very efficient as we are doing multiple allocations.
