@@ -128,9 +128,9 @@ class PathServerImpl final : public pathserver::PathServer::Service {
                     const pathserver::PlanRequest* request,
                     pathserver::PlanReply* response) override {
     // Setup collision detector.
-    CollisionDetector cdet{0.20, 0.10, 0.10, 0.10};
+    CollisionDetector cdet{0.10, 0.10, 0.10, 0.10};
     for (const auto& ob : request->obstacles()) {
-      cdet.add_obstacle(ob.x() + 0.05, ob.y() + 0.05);
+      cdet.add_obstacle((ob.x() / 10.) + 0.05, (ob.y() / 10.) + 0.05);
     }
 
     // Setup OMPL
