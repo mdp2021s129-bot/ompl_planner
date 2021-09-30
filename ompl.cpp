@@ -129,7 +129,7 @@ class PathServerImpl final : public pathserver::PathServer::Service {
                     const pathserver::PlanRequest* request,
                     pathserver::PlanReply* response) override {
     // Setup collision detector.
-    CollisionDetector cdet{0.10, 0.10, 0.10, 0.10};
+    CollisionDetectorIR cdet{0.23, 0.03, 0.13, 0.13};
     for (const auto& ob : request->obstacles()) {
       cdet.add_obstacle((ob.x() / 10.) + 0.05, (ob.y() / 10.) + 0.05);
     }
