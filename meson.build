@@ -5,7 +5,7 @@ project('ompl', 'cpp',
 
 fs = import('fs')
 
-ompl = dependency('ompl', method: 'cmake')
+ompl = dependency('ompl')
 grpc = dependency('grpc++')
 eigen = dependency('eigen3')
 protobuf = dependency('protobuf')
