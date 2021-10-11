@@ -15,6 +15,15 @@ service PathServer {
   rpc Plan(PlanRequest) returns (PlanReply) {}
 
   /**
+   * Plan a new path for the fastest car.
+   *
+   * Fails if the start and / or end state are invalid.
+   *
+   * Fails if no path could be found.
+   */
+  rpc PlanFastest(PlanRequest) returns (PlanReply) {}
+
+  /**
    * Checks if a given state is valid.
    */
   rpc IsValid(State) returns (google.protobuf.BoolValue) {}
@@ -67,6 +76,13 @@ message PlanRequest {
    * Target state.
    */
   State target = 3;
+
+  /**
+   * Distance to main obstacle in metres.
+   *
+   * Only for fastest car.
+   */
+  double d = 4;
 }
 
 /**

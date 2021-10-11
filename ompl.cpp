@@ -45,7 +45,6 @@
 #include <ompl/geometric/SimpleSetup.h>
 #include <ompl/geometric/planners/AnytimePathShortening.h>
 #include <ompl/geometric/planners/kpiece/LBKPIECE1.h>
-#include <ompl/geometric/planners/rrt/RRTstar.h>
 #include <pathserver.grpc.pb.h>
 #include <cmath>
 #include <collision.hpp>
@@ -160,8 +159,8 @@ class PathServerImpl final : public pathserver::PathServer::Service {
     // shortening thread with APS for path planning.
     ob::PlannerPtr merged =
         ompl::geometric::AnytimePathShortening::createPlanner<
-            ompl::geometric::LBKPIECE1, ompl::geometric::LBKPIECE1, ompl::geometric::LBKPIECE1>(
-            ss.getSpaceInformation());
+            ompl::geometric::LBKPIECE1, ompl::geometric::LBKPIECE1,
+            ompl::geometric::LBKPIECE1>(ss.getSpaceInformation());
     ss.setPlanner(merged);
 
     // TODO: only use if the default paths aren't great.
@@ -170,6 +169,97 @@ class PathServerImpl final : public pathserver::PathServer::Service {
     // std::make_shared<StateMinimizationObjective>(ss.getSpaceInformation()) +
     //                                 std::make_shared<ob::PathLengthOptimizationObjective>(ss.getSpaceInformation());
     // ss.setOptimizationObjective(obj);
+
+    // Set start and goal states.
+    start[0] = request->current().x();
+    start[1] = request->current().y();
+    start[2] = request->current().theta();
+    goal[0] = request->target().x();
+    goal[1] = request->target().y();
+    goal[2] = request->target().theta();
+    ss.setStartAndGoalStates(start, goal);
+
+    // Verify that start and goal states are valid states.
+    if ((!ss.getStateValidityChecker()->isValid(start.get())) ||
+        (!ss.getStateValidityChecker()->isValid(goal.get())))
+      return grpc::Status{grpc::StatusCode::INVALID_ARGUMENT,
+                          "start and / or end state(s) invalid"};
+
+    // State check at .5% resolution.
+    ss.getSpaceInformation()->setStateValidityCheckingResolution(0.005);
+    ss.setup();
+
+    // Attempt to solve within 6s.
+    ob::PlannerStatus solved = ss.solve(6);
+
+    // If an approximate or exact solution is achieved.
+    if (solved) {
+      // Use one second to simplify the solution
+      ss.simplifySolution(1);
+      og::PathGeometric path = ss.getSolutionPath();
+
+      // Not very efficient as we are doing multiple allocations.
+      // But it's nice for debugging.
+      std::vector<Move> moves{};
+      generate_moves(*(space->as<ob::ReedsSheppStateSpace>()), path, .337,
+                     moves);
+      for (auto& move : moves) {
+        auto mp = response->add_moves();
+        mp->CopyFrom(move);
+      }
+
+      for (std::size_t i{}; i < path.getStateCount(); ++i) {
+        const auto* s = path.getState(i)->as<ob::SE2StateSpace::StateType>();
+        auto sp = response->add_waypoints();
+        sp->set_x(s->getX());
+        sp->set_y(s->getY());
+        sp->set_theta(s->getYaw());
+      }
+
+      return grpc::Status::OK;
+    } else
+      return grpc::Status{grpc::StatusCode::DEADLINE_EXCEEDED,
+                          "no solution found within planning time limit"};
+  }
+
+  grpc::Status PlanFastest(grpc::ServerContext* context,
+                           const pathserver::PlanRequest* request,
+                           pathserver::PlanReply* response) override {
+    // Setup collision detector.
+    CollisionDetectorFC cdet{0.23, 0.03, 0.13, 0.13, request->d()};
+    // Setup OMPL
+    ob::StateSpacePtr space = std::make_shared<ob::ReedsSheppStateSpace>(0.337);
+    ob::ScopedState<> start{space}, goal{space};
+
+    // Setup bounding box.
+    // 3 metres in the X direction, 2 metres in the Y direction.
+    // X -> [0, 3]
+    // Y -> [-1, 1]
+    ob::RealVectorBounds bounds{2};
+    bounds.setLow(0, 0.);
+    bounds.setLow(1, -1.);
+    bounds.setHigh(0, 3.);
+    bounds.setHigh(1, 1.);
+    space->as<ob::SE2StateSpace>()->setBounds(bounds);
+
+    og::SimpleSetup ss{space};
+
+    // Set state validity checking.
+    const ob::SpaceInformation* si = ss.getSpaceInformation().get();
+    ss.setStateValidityChecker([cdet, si](const ob::State* state) {
+      const auto* s = state->as<ob::SE2StateSpace::StateType>();
+      // Validate for collisions and whether the robot is within its boundaries.
+      return (!cdet.check_collision(s->getX(), s->getY(), s->getYaw())) &&
+             (si->satisfiesBounds(state));
+    });
+
+    // Use 3 instances of the LBKPIECE1 planner (on 3 threads) and 1
+    // shortening thread with APS for path planning.
+    ob::PlannerPtr merged =
+        ompl::geometric::AnytimePathShortening::createPlanner<
+            ompl::geometric::LBKPIECE1, ompl::geometric::LBKPIECE1,
+            ompl::geometric::LBKPIECE1>(ss.getSpaceInformation());
+    ss.setPlanner(merged);
 
     // Set start and goal states.
     start[0] = request->current().x();
