@@ -43,7 +43,8 @@
 #include <ompl/base/spaces/DubinsStateSpace.h>
 #include <ompl/base/spaces/ReedsSheppStateSpace.h>
 #include <ompl/geometric/SimpleSetup.h>
-#include <ompl/geometric/planners/rrt/RRTXstatic.h>
+#include <ompl/geometric/planners/AnytimePathShortening.h>
+#include <ompl/geometric/planners/kpiece/LBKPIECE1.h>
 #include <ompl/geometric/planners/rrt/RRTstar.h>
 #include <pathserver.grpc.pb.h>
 #include <cmath>
@@ -155,10 +156,13 @@ class PathServerImpl final : public pathserver::PathServer::Service {
              (si->satisfiesBounds(state));
     });
 
-    // Configure RRT* planner.
-    ob::PlannerPtr planner =
-        std::make_shared<ompl::geometric::RRTstar>(ss.getSpaceInformation());
-    ss.setPlanner(planner);
+    // Use 3 instances of the LBKPIECE1 planner (on 3 threads) and 1
+    // shortening thread with APS for path planning.
+    ob::PlannerPtr merged =
+        ompl::geometric::AnytimePathShortening::createPlanner<
+            ompl::geometric::LBKPIECE1, ompl::geometric::LBKPIECE1, ompl::geometric::LBKPIECE1>(
+            ss.getSpaceInformation());
+    ss.setPlanner(merged);
 
     // TODO: only use if the default paths aren't great.
     // Minimize path length while minimizing number of states.
@@ -186,19 +190,11 @@ class PathServerImpl final : public pathserver::PathServer::Service {
     ss.getSpaceInformation()->setStateValidityCheckingResolution(0.005);
     ss.setup();
 
-    // Attempt to solve within 3s.
-    ob::PlannerStatus solved = ss.solve(3);
+    // Attempt to solve within 6s.
+    ob::PlannerStatus solved = ss.solve(6);
 
     // If an approximate or exact solution is achieved.
     if (solved) {
-      // Check the solution cost. The RRT* planner can returl solutions with
-      // infinite cost.
-      auto cost =
-          ss.getSolutionPath().cost(ss.getOptimizationObjective()).value();
-      if (std::fpclassify(cost) == FP_INFINITE)
-        return grpc::Status{grpc::StatusCode::DEADLINE_EXCEEDED,
-                            "solution cost not finite after planning time"};
-
       // Use one second to simplify the solution
       ss.simplifySolution(1);
       og::PathGeometric path = ss.getSolutionPath();
