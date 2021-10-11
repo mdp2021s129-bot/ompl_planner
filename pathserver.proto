@@ -80,6 +80,15 @@ message PlanRequest {
   /**
    * Distance to main obstacle in metres.
    *
+   * This is the width of the "exit" that the robot has to navigate through
+   * to go around the obstacle.
+   *
+   * |---<**************>|
+   * |                   |
+   * |---<**************>|
+   *
+   * Where <**********> is the distance \c d.
+   *
    * Only for fastest car.
    */
   double d = 4;
