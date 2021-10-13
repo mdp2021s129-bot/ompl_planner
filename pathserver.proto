@@ -21,7 +21,7 @@ service PathServer {
    *
    * Fails if no path could be found.
    */
-  rpc PlanFastest(PlanRequest) returns (PlanReply) {}
+  rpc PlanFastest(PlanRequestFC) returns (PlanReply) {}
 
   /**
    * Checks if a given state is valid.
@@ -76,22 +76,32 @@ message PlanRequest {
    * Target state.
    */
   State target = 3;
+}
 
+/** 
+ * Plan request for the fastest car.
+ */
+message PlanRequestFC {
   /**
-   * Distance to main obstacle in metres.
-   *
-   * This is the width of the "exit" that the robot has to navigate through
-   * to go around the obstacle.
-   *
-   * |---<**************>|
-   * |                   |
-   * |---<**************>|
-   *
-   * Where <**********> is the distance \c d.
-   *
-   * Only for fastest car.
+   * Current state.
    */
-  double d = 4;
+  State current = 1;
+  /**
+   * Target state.
+   */
+  State target = 2;
+  /**
+   * Distance between the end of the carpark and the "far" obstacle.
+   */
+  double d = 3;
+  /**
+   * Whether to block off the left side of the carpark exit.
+   */
+  bool block_left = 4;
+  /**
+   * Whether to blokc off the right side of the carpark exit.
+   */
+  bool block_right = 5;
 }
 
 /**

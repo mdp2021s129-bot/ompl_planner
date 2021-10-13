@@ -223,10 +223,16 @@ class PathServerImpl final : public pathserver::PathServer::Service {
   }
 
   grpc::Status PlanFastest(grpc::ServerContext* context,
-                           const pathserver::PlanRequest* request,
+                           const pathserver::PlanRequestFC* request,
                            pathserver::PlanReply* response) override {
     // Setup collision detector.
-    CollisionDetectorFC cdet{0.23, 0.03, 0.13, 0.13, request->d()};
+    CollisionDetectorFC cdet{0.23,
+                             0.03,
+                             0.13,
+                             0.13,
+                             request->d(),
+                             request->block_left(),
+                             request->block_right()};
     // Setup OMPL
     ob::StateSpacePtr space = std::make_shared<ob::ReedsSheppStateSpace>(0.337);
     ob::ScopedState<> start{space}, goal{space};
@@ -237,9 +243,9 @@ class PathServerImpl final : public pathserver::PathServer::Service {
     // Y -> [-1, 1]
     ob::RealVectorBounds bounds{2};
     bounds.setLow(0, 0.);
-    bounds.setLow(1, -1.);
-    bounds.setHigh(0, 3.);
-    bounds.setHigh(1, 1.);
+    bounds.setLow(1, -1.5);
+    bounds.setHigh(0, 3.5);
+    bounds.setHigh(1, 1.5);
     space->as<ob::SE2StateSpace>()->setBounds(bounds);
 
     og::SimpleSetup ss{space};

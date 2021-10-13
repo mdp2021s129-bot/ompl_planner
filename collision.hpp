@@ -114,10 +114,12 @@ class CollisionDetectorFC : public CollisionDetector {
       {{c2v{-0.1, -0.3}, c2v{0, 0.3}},
        {c2v{-0.1, -0.4}, c2v{0.5, -0.3}},
        {c2v{-0.1, 0.3}, c2v{0.5, 0.4}}}};
-  /// Polygonal shape representing the robot.
-  c2Poly robot_shape;
   /// AABB representing the obstacle.
   const c2AABB obstacle;
+  const c2Ray left_barrier;
+  const c2Ray right_barrier;
+  const bool left_blocked;
+  const bool right_blocked;
 
  public:
   // Copy construction and copy-assign are all okay.
@@ -131,8 +133,17 @@ class CollisionDetectorFC : public CollisionDetector {
    * \param l2c distance from left of robot to centre.
    * \param r2c distance from right of robot to centre.
    * \param d distance from center of obstacle to edge of carpark.
+   * \param block_left whether to block off the left side of the carpark exit.
+   * \param block_right whether to block off the right side of the carpark
+   *  exit.
    */
-  CollisionDetectorFC(float f2c, float b2c, float l2c, float r2c, float d);
+  CollisionDetectorFC(float f2c,
+                      float b2c,
+                      float l2c,
+                      float r2c,
+                      float d,
+                      bool block_left,
+                      bool block_right);
 
   bool check_collision(float x, float y, float theta) const override;
 };

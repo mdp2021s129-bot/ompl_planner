@@ -62,9 +62,15 @@ CollisionDetectorFC::CollisionDetectorFC(float f2c,
                                          float b2c,
                                          float l2c,
                                          float r2c,
-                                         float d)
+                                         float d,
+                                         bool block_left,
+                                         bool block_right)
     : CollisionDetector{f2c, b2c, l2c, r2c},
-      obstacle{c2v{0.5f + d, -0.30}, c2v{0.6f + d, 0.30}} {
+      obstacle{c2v{0.5f + d, -0.30}, c2v{0.6f + d, 0.30}},
+      left_barrier{c2v{0.5, 0.3}, c2v{1., 0.}, d},
+      right_barrier{c2v{0.5, -0.3}, c2v{1., 0.}, d},
+      left_blocked{block_left},
+      right_blocked{block_right} {
   // Robot initially centered around (0, 0), with rotation = 0.
   robot_shape.count = 4;
   robot_shape.verts[0] = c2v{f2c, l2c};
@@ -96,6 +102,16 @@ bool CollisionDetectorFC::check_collision(float x, float y, float theta) const {
 
   // Check collision against main obstacle.
   if (c2AABBtoPoly(obstacle, &robot_shape, &xfrm))
+    return true;
+
+  // Check collision against exit blockers.
+  // Storing both rays separately makes it a bit more annoying, but hopefully
+  // can make it faster by reducing cache misses.
+  c2Raycast out;
+  if (left_blocked && c2RaytoPoly(left_barrier, &robot_shape, &xfrm, &out))
+    return true;
+
+  if (right_blocked && c2RaytoPoly(right_barrier, &robot_shape, &xfrm, &out))
     return true;
 
   return false;
