@@ -44,24 +44,45 @@
 #include <ompl/base/spaces/ReedsSheppStateSpace.h>
 #include <ompl/geometric/SimpleSetup.h>
 #include <ompl/geometric/planners/AnytimePathShortening.h>
+#include <ompl/geometric/planners/cforest/CForest.h>
 #include <ompl/geometric/planners/kpiece/LBKPIECE1.h>
 #include <pathserver.grpc.pb.h>
 #include <cmath>
 #include <collision.hpp>
 #include <fstream>
+#include <iostream>
 #include <optional>
 
 namespace ob = ompl::base;
 namespace og = ompl::geometric;
 
-// Objective that minimizes the number of states
-class StateMinimizationObjective : public ob::StateCostIntegralObjective {
+static constexpr double TURN_RADIUS{0.337};
+static constexpr double MOVEMENT_THRESHOLD{1e-4};
+
+// Objective that minimizes the number of "movements"
+class MovementMinimizationObjective : public ob::StateCostIntegralObjective {
+ private:
+  const ob::ReedsSheppStateSpace* const s;
+
  public:
   // We don't need motion interpolation.
-  StateMinimizationObjective(const ob::SpaceInformationPtr& si)
-      : ob::StateCostIntegralObjective(si, true) {}
+  MovementMinimizationObjective(const ob::ReedsSheppStateSpace* s,
+                                const ob::SpaceInformationPtr& si)
+      : ob::StateCostIntegralObjective(si, false), s{s} {}
 
   ob::Cost stateCost(const ob::State* s) const override { return ob::Cost{1.}; }
+
+  ob::Cost motionCost(const ob::State* s1, const ob::State* s2) const override {
+    auto path = s->reedsShepp(s1, s2);
+    double cost = 0.;
+    for (size_t i{}; i < 5; i++) {
+      if (path.type_[i] &&
+          (fabs(path.length_[i] * TURN_RADIUS) > MOVEMENT_THRESHOLD))
+        cost += 1.;
+    }
+
+    return ob::Cost{cost};
+  }
 };
 
 using OptDirection = std::optional<pathserver::PlanReply_Move_Direction>;
@@ -233,8 +254,11 @@ class PathServerImpl final : public pathserver::PathServer::Service {
                              request->d(),
                              request->block_left(),
                              request->block_right()};
+
+    std::cout << "Planning for fastest car\n";
     // Setup OMPL
-    ob::StateSpacePtr space = std::make_shared<ob::ReedsSheppStateSpace>(0.337);
+    ob::StateSpacePtr space =
+        std::make_shared<ob::ReedsSheppStateSpace>(TURN_RADIUS);
     ob::ScopedState<> start{space}, goal{space};
 
     // Setup bounding box.
@@ -249,6 +273,15 @@ class PathServerImpl final : public pathserver::PathServer::Service {
     space->as<ob::SE2StateSpace>()->setBounds(bounds);
 
     og::SimpleSetup ss{space};
+
+    // TODO: only use if the default paths aren't great.
+    // Minimize path length while minimizing number of moves.
+    ob::OptimizationObjectivePtr obj =
+        std::make_shared<MovementMinimizationObjective>(
+            space->as<ob::ReedsSheppStateSpace>(), ss.getSpaceInformation()) +
+        std::make_shared<ob::PathLengthOptimizationObjective>(
+            ss.getSpaceInformation());
+    ss.setOptimizationObjective(obj);
 
     // Set state validity checking.
     const ob::SpaceInformation* si = ss.getSpaceInformation().get();
@@ -265,6 +298,10 @@ class PathServerImpl final : public pathserver::PathServer::Service {
         ompl::geometric::AnytimePathShortening::createPlanner<
             ompl::geometric::LBKPIECE1, ompl::geometric::LBKPIECE1,
             ompl::geometric::LBKPIECE1>(ss.getSpaceInformation());
+
+    // CForest with RRT*
+    // ob::PlannerPtr merged =
+    //     std::make_shared<ompl::geometric::CForest>(ss.getSpaceInformation());
     ss.setPlanner(merged);
 
     // Set start and goal states.
@@ -277,29 +314,32 @@ class PathServerImpl final : public pathserver::PathServer::Service {
     ss.setStartAndGoalStates(start, goal);
 
     // Verify that start and goal states are valid states.
-    if ((!ss.getStateValidityChecker()->isValid(start.get())) ||
-        (!ss.getStateValidityChecker()->isValid(goal.get())))
+    if (!ss.getStateValidityChecker()->isValid(start.get()))
       return grpc::Status{grpc::StatusCode::INVALID_ARGUMENT,
-                          "start and / or end state(s) invalid"};
+                          "start state invalid"};
+
+    if (!ss.getStateValidityChecker()->isValid(goal.get()))
+      return grpc::Status{grpc::StatusCode::INVALID_ARGUMENT,
+                          "target state nvalid"};
 
     // State check at .5% resolution.
     ss.getSpaceInformation()->setStateValidityCheckingResolution(0.005);
     ss.setup();
 
-    // Attempt to solve within 6s.
-    ob::PlannerStatus solved = ss.solve(6);
+    // Attempt to solve
+    ob::PlannerStatus solved = ss.solve(request->planning_time());
 
     // If an approximate or exact solution is achieved.
     if (solved) {
       // Use one second to simplify the solution
-      ss.simplifySolution(1);
+      ss.simplifySolution(1.0);
       og::PathGeometric path = ss.getSolutionPath();
 
       // Not very efficient as we are doing multiple allocations.
       // But it's nice for debugging.
       std::vector<Move> moves{};
-      generate_moves(*(space->as<ob::ReedsSheppStateSpace>()), path, .337,
-                     moves);
+      generate_moves(*(space->as<ob::ReedsSheppStateSpace>()), path,
+                     TURN_RADIUS, moves);
       for (auto& move : moves) {
         auto mp = response->add_moves();
         mp->CopyFrom(move);

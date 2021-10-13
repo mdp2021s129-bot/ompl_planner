@@ -102,6 +102,10 @@ message PlanRequestFC {
    * Whether to blokc off the right side of the carpark exit.
    */
   bool block_right = 5;
+  /**
+   * Amount of time to spend planning.
+   */
+  double planning_time = 6;
 }
 
 /**
